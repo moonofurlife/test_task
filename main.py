@@ -28,16 +28,19 @@ def save_pdf_file(row, ad, pdf_folder_path, url):
     options.add_argument('--headless')
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')  # добавлено для работы на маке
     driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
     try:
         driver.get(url)
-        print_button = driver.find_element_by_class_name("js-print-article")
-        print_button.click()
-        time.sleep(5)
+        time.sleep(5)  # убрана попытка нажатия на кнопку печати (оно не работает на маке)
         save_as_pdf_button = driver.find_element_by_xpath("//span[@class='action-name' and text()='Сохранить в PDF']")
         save_as_pdf_button.click()
         time.sleep(5)
         driver.quit()
+        # перенесено создание папки с pdf-файлами перед сохранением файла
+        os.makedirs(pdf_folder_path, exist_ok=True)
+        with open(pdf_file_path, 'wb') as f:
+            f.write(requests.get(url).content)
         return f"Файл {pdf_file_path} сохранен"
     except:
         return f"Ошибка при сохранении файла {pdf_file_path}"
@@ -57,5 +60,4 @@ def main(file_path, pdf_folder_path):
     df = load_data(file_path)
     process_data(df, pdf_folder_path)
 
-main('xlsx/сlients.xlsx', 'pdf')
-
+main('xlsx/clients.xlsx', 'pdf')
