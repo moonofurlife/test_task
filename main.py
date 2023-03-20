@@ -1,67 +1,73 @@
 import pandas as pd
 import requests
-import time
 import os
-import PyPDF4
+import time
+import datetime
 from bs4 import BeautifulSoup
-from datetime import datetime
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 
+# Функция для загрузки данных из excel файла
 def load_data(file_path):
     df = pd.read_excel(file_path)
-    df['ИНН'] = df['ИНН'].fillna('')
+    # Если в колонке 7 есть пропущенные значения, заполним их пустыми строками
+    df.iloc[:, 8] = df.iloc[:, 8].fillna('')
+    # Добавляем две новые колонки: "Найдено в Ъ" и "Дата проверки"
+    df["Найдено в Ъ"] = ""
+    df["Дата проверки"] = ""
     return df
 
-def get_info_from_site(inn):
+# Функция для поиска информации на сайте и сохранения ее в pdf файл
+def search_and_save_pdf(inn, pdf_folder_path):
     url = f"https://bankruptcy.kommersant.ru/search/index.php?query={inn}"
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
+    # Ищем все объявления, соответствующие запросу
     ads = soup.find_all('div', {'class': 'page-content-company'})
-    return ads, url
+    # Если объявления найдены
+    if ads:
+        # date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        # pdf_folder_path = os.path.join(pdf_folder_path, date_str)
+        # os.makedirs(pdf_folder_path, exist_ok=True)
+        # # driver = webdriver.Chrome()
+        # driver.get(url)
+        # for i, ad in enumerate(ads):
+        #     print_button = driver.find_element(By.LINK_TEXT, "Распечатать объявление")
+            # if print_button:
+                # print_button.click()
+                # time.sleep(5)
+                # save_as_pdf_button = driver.find_element('span', {'class': 'action-name', 'text': 'Сохранить в PDF'})
+                # if save_as_pdf_button:
+                #     save_as_pdf_button.click()
+                #     time.sleep(5)
+                #     filename = max([os.path.join(root, name) for root, dirs, files in os.walk(os.path.expanduser('~\\Downloads')) for name in files], key=os.path.getctime)
+                #     new_filename = f"{pdf_folder_path}/Siebel-DI_{inn}_{i+1}.pdf"
+                #     os.rename(filename, new_filename)
+                #     print(f"Файл {new_filename} сохранен")
+        return "Найдена информация об ИНН", datetime.datetime.now()
+    else:
+        return "Не найдена информация", datetime.datetime.now()
 
-def save_pdf_file(row, ad, pdf_folder_path, url):
-    file_name = f"Siebel-DI_{row['Фамилия']}_{row['Имя']}_{row['Отчество']}_{ad+1}.pdf"
-    pdf_file_path = os.path.join(pdf_folder_path, file_name)
-
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')  # добавлено для работы на маке
-    driver = webdriver.Chrome(ChromeDriverManager(), options=options)
-    try:
-        driver.get(url)
-        print_button = driver.find_element_by_class_name("js-print-this-article")
-        print_button.click()
-        time.sleep(5)
-        save_as_pdf_button = driver.find_element_by_xpath("//span[@class='action-name' and text()='Сохранить в PDF']")
-        save_as_pdf_button.click()
-        time.sleep(5)
-        driver.quit()
-        # создание папки с pdf-файлами перед сохранением файла
-        os.makedirs(pdf_folder_path, exist_ok=True)
-        # сохранение файла в формате pdf
-        response = requests.get(url, timeout=10)
-        with open(pdf_file_path, 'wb') as f:
-            f.write(response.content)
-        return f"Файл {pdf_file_path} сохранен"
-    except:
-        return f"Ошибка при сохранении файла {pdf_file_path}"
-
+# Функция для обработки данных
 def process_data(df, pdf_folder_path):
-    df['Найдено в Ъ'] = ''
     for index, row in df.iterrows():
-        inn = row['ИНН']
+        inn = row.iloc[7]
         if inn:
-            ads, url = get_info_from_site(inn)
-            if ads:
-                df.at[index, 'Найдено в Ъ'] = 'Найдена информация об ИНН'
-                for i, ad in enumerate(ads):
-                    save_pdf_file(row, i, pdf_folder_path, url)
+            result, date = search_and_save_pdf(inn, pdf_folder_path)
+            df.at[index, "Найдено в Ъ"] = result
+            df.at[index, "Дата проверки"] = date
+
+# Функция для запуска обработки данных
 
 def main(file_path, pdf_folder_path):
+    # Создаем папку для хранения pdf файлов, если она не существует
+    os.makedirs(pdf_folder_path, exist_ok=True)
     df = load_data(file_path)
     process_data(df, pdf_folder_path)
+    # Сохраняем измененный DataFrame в Excel файл
+    output_file_path = file_path.split('.')[0] + '_output.xlsx'
+    df.to_excel(output_file_path, index=False)
+    print(f"Данные сохранены в файл {output_file_path}")
 
-main('xlsx/clients.xlsx', 'pdf')
+main('xlsx/clients.xlsx','pdf')
